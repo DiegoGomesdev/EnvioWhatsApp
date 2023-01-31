@@ -4,134 +4,129 @@ from selenium.webdriver.common.keys import Keys
 from selenium import webdriver
 import time
 import urllib
-import PySimpleGUI as sg
 import pandas as pd
+import PySimpleGUI as sg
 
-# Função para importar o arquivo xlsx
+layout = [
+    [sg.Text('Selecione o arquivo Excel', font=("Helvetica", 13),
+             text_color='', justification='center')],
+    [sg.InputText(size=(40, 1)), sg.FileBrowse(button_text='Procurar')],
+    [sg.Text('Selecione o email para envio do relatorio', font=(
+        "Helvetica", 13), text_color='', justification='center')],
+    [sg.InputText(size=(40, 1))],
+    [sg.Submit(button_text='Enviar', button_color=('white', 'green')),
+     sg.Cancel(button_text='Cancelar', button_color=('white', 'red'))]
+]
 
-try:
-    def import_file():
-        layout = [[sg.Text('Selecione o arquivo xlsx:'), sg.Input(), sg.FileBrowse()],
-                  [sg.OK(), sg.Cancel()]]
+window = sg.Window('Arquivo Excel', layout)
 
-        window = sg.Window('Importar arquivo').Layout(layout)
-        event, values = window.Read()
-        window.Close()
-
-        if event == 'OK':
-            filename = values[0]
-            contatos_df = pd.read_excel(filename)
-            return contatos_df
+while True:
+    event, values = window.Read()
+    if event is None or event == 'Enviar':
+        if values[0] == '':
+            sg.popup('Nenhum arquivo selecionado')
         else:
-            return None
+            filename = values[0]
+        email_env = values[1]
+        break
+    elif event == 'Cancelar':
+        break
 
-    # Função para exibir mensagem de erro
+window.close
 
-    def error(msg):
-        sg.PopupError(msg)
+contatos_df = pd.read_excel(filename)
 
-    # Função para exibir a tela de relatório
+# o resto do código aqui
 
-    def show_report(teste):
-        layout = [[sg.Text('Relatório dos números enviados')],
-                  [sg.Text('Nome'), sg.Text('Numero'),
-                   sg.Text('Status de Envio')],
-                  [sg.Listbox(values=teste, size=(50, 20))],
-                  [sg.OK()]]
+navegador = webdriver.Chrome()
 
-        window = sg.Window('Relatório').Layout(layout)
-        event, values = window.Read()
-        window.Close()
+navegador.get("https://web.whatsapp.com/")
 
-    def main():
-        global contatos_df
-        contatos_df = import_file()
-        if contatos_df is None:
-            return
+navegador.maximize_window()
 
-except:
-    print("Algo deu errado")
+while len(navegador.find_elements(By.ID, 'side')) < 1:
+    time.sleep(5)
 
-finally:
+teste = ''
 
-    main()
+for i, mensagem in enumerate(contatos_df['Mensagem']):
 
-    navegador = webdriver.Chrome()
+    pessoa = contatos_df.loc[i, "Pessoa"]
 
-    navegador.get("https://web.whatsapp.com/")
+    numero = contatos_df.loc[i, "Numero"]
 
-    navegador.maximize_window()
+    texto = urllib.parse.quote(f"Oi {pessoa}! {mensagem}")
 
-    while len(navegador.find_elements(By.ID, 'side')) < 1:
-        time.sleep(5)
+    link = f"https://web.whatsapp.com/send?phone={numero}&text={texto}"
 
-        teste = ''
+    navegador.get(link)
 
-    for i, mensagem in enumerate(contatos_df['Mensagem']):
+    time.sleep(5)
 
-        pessoa = contatos_df.loc[i, "Pessoa"]
+    try:
 
-        numero = contatos_df.loc[i, "Numero"]
+        if len(navegador.find_elements(By.CLASS_NAME, '_2Nr6U')) > 0:
 
-        texto = urllib.parse.quote(f"Oi {pessoa}! {mensagem}")
-
-        link = f"https://web.whatsapp.com/send?phone={numero}&text={texto}"
-
-        navegador.get(link)
-
-        time.sleep(5)
-
-        try:
-
-            if len(navegador.find_elements(By.CLASS_NAME, '_2Nr6U')) > 0:
-
-                navegador.find_element(By.XPATH,
-                                       '//*[@id="app"]/div/span[2]/div/span/div/div/div/div/div/div[2]/div/div/div/div').click()
-                msg = f'A mensagem enviada para o numero {numero} nao foi efetuada.'
-                print(msg)
-                time.sleep(5)
-            else:
-
-                navegador.find_element(By.XPATH,
-                                       '//*[@id="main"]/footer/div[1]/div/span[2]/div/div[2]/div[1]/div/div/p/span').send_keys(Keys.ENTER)
-                msg = f'A mensagem enviada para o numero {numero} foi efetuada.'
-                print(msg)
+            navegador.find_element(By.XPATH,
+                                   '//*[@id="app"]/div/span[2]/div/span/div/div/div/div/div/div[2]/div/div/div/div').click()
+            msg = f'Mensagem não enviada.'
+            print(msg)
             time.sleep(5)
+        else:
 
-        except:
-            print(f'Erro no envio')
-            continue
+            navegador.find_element(By.XPATH,
+                                   '//*[@id="main"]/footer/div[1]/div/span[2]/div/div[2]/div[1]/div/div/p/span').send_keys(Keys.ENTER)
+            msg = f'Mensagem enviada com sucesso.'
+            print(msg)
+        time.sleep(5)
 
-        teste += f'<tr> <td>{pessoa}</td> <td>{numero}</td> <td>{msg}</td></tr>'
+    except:
+        print(f'Erro no envio')
+        continue
 
-    outlook = win32.Dispatch('outlook.application')
+    teste += f'<tr> <td>{pessoa}</td> <td>{numero}</td> <td>{msg}</td></tr>'
 
-    email = outlook.CreateItem(0)
+outlook = win32.Dispatch('outlook.application')
 
-    email.To = 'digomesrique@hotmail.com'
+email = outlook.CreateItem(0)
 
-    email.Subject = 'Relatório dos numeros enviados'
+email.To = str(email_env)
 
-    email.HTMLBody = f'''
-        
-    <html>
-            <body>
-                <h1>Relatorio dos numeros enviados</h1>
-                <br>
-                <table border="1">
-        <tr>
-            <td>Nome</td>
-            <td>Numero:</td>
-            <td>Status de Envio:</td>
-            
-        </tr>
-        {teste}
-    
-    </table>
-            </body>
-        </html>
-        
-        '''
-    email.Send()
+email.Subject = 'Relatório dos numeros enviados'
 
-    print('Email Enviado')
+email.HTMLBody = f'''
+
+<html>
+    <head>
+        <style>
+            table, th, td {{
+                border: 1px solid black;
+                border-collapse: collapse;
+            }}
+            th, td {{
+                padding: 8px;
+                text-align: left;
+            }}
+            th {{
+                background-color: lightgray;
+            }}
+        </style>
+    </head>
+    <body>
+        <h1 style="text-align: center;">Relatório dos Números Enviados</h1>
+        <br>
+        <table style="width:100%;">
+            <tr>
+                <th>Nome</th>
+                <th>Número</th>
+                <th>Status de Envio</th>
+            </tr>
+            {teste}
+        </table>
+    </body>
+</html>
+'''
+
+email.Send()
+
+print('Email Enviado')
